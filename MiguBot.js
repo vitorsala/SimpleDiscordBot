@@ -2,7 +2,7 @@ var Discordie = require("discordie");
 var ytdl = require("ytdl-core");
 // var youtube = require("./youtube.js");
 var vars = require('./auth.json');
-var client = new Discordie();
+var client = new Discordie({autoReconnect: true});
 var resources = [];
 var cache = [];
 
@@ -70,7 +70,7 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 
 	}
 
-	else if(e.message.content.indexOf("$ytq") > -1){
+	else if(e.message.content.substring(0,4) == "$ytq"){
 		var arg = e.message.content.replace("$ytq","").trim();
 		if(arg == ""){
 			if(!cache[guild.id][YT_ISPLAYING] || cache[guild.id][YT_CURRENTVIDEO] == ""){
@@ -152,7 +152,7 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 
 	}
 
-	else if(e.message.content.indexOf("$yt") > -1){
+	else if(e.message.content.substring(0,3) == "$yt"){
 		var arg = e.message.content.replace("$yt","").trim();
 		if(arg == ""){
 			if(!cache[guild.id][YT_ISPLAYING] || cache[guild.id][YT_CURRENTVIDEO] == ""){
@@ -225,6 +225,15 @@ client.Dispatcher.on("VOICE_DISCONNECTED", e => {
 	cache[guildId][YT_QUEUE].clearQueue();
 });
 
+client.Dispatcher.on("DISCONNECTED", e=> {
+	console.log("Client desconectado: "+e.error+"\n");
+	if(e.autoReconnect){
+		setTimeout(function(){
+			client.connect({ token: vars['discordToken'] });
+		},e.delay);
+	}
+});
+
 function checkIfInVoiceChannel(vChannel, guild){
 	var currentConnected = client.User.getVoiceChannel(guild);
 	return (currentConnected && currentConnected.id == vChannel.id);
@@ -245,7 +254,7 @@ function playRemote(remote, guildId, info, callback = function(){}) {
     if (!info) return console.log("[playRemote] VoiceConnection não informado");
     // note that in this case FFmpeg must also be compiled with HTTPS support
     var encoder = info.createExternalEncoder({
-      type: "ffmpeg", source: bestaudio.url
+    	type: "ffmpeg", source: bestaudio.url
     });
 	encoder.once("end", () => {
 		if(cache[guildId][YT_QUEUE].isEmpty()){
