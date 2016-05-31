@@ -1,38 +1,69 @@
 var Discordie = require("discordie");
 var ytdl = require("ytdl-core");
+var readline = require('readline');
 // var youtube = require("./youtube.js");
 var vars = require('./auth.json');
 var client = new Discordie({autoReconnect: true});
-var resources = [];
 var cache = [];
 
 client.connect({ token: vars['discordToken'] });
 
 // Cache index
-const YT_CMD = 'ytplay';
-const YT_QUEUE = 'ytqueue';
-const YT_CURRENTVIDEO = 'ytcurrent';
-const YT_ISPLAYING = 'ytstatus';
-const GG = 'gg';
+const cacheIndex = {
+	YT_CMD : 'ytplay',
+	YT_QUEUE : 'ytqueue',
+	YT_CURRENTVIDEO : 'ytcurrent',
+	YT_ISPLAYING : 'ytstatus',
+	GG : 'gg'
+};
 
+const vChannelCheckCode = {
+	OK : 0,
+	BOT_NOT_CONNECTED : 1,
+	USER_NOT_CONNECTED : 2,
+	DIFFERENT_VCHANNEL : 3
+};
+
+// Discordie events
 client.Dispatcher.on("GATEWAY_READY", e => {
 	client.Guilds.forEach(function(guild){
 		console.log(guild.name + " : " + guild.id);
 		cache[guild.id] = [];
-		cache[guild.id][YT_QUEUE] = new Queue();
-		cache[guild.id][YT_ISPLAYING] = false;
-		cache[guild.id][YT_CURRENTVIDEO] = "";	
-		cache[guild.id][GG] = false;
-
+		cache[guild.id][cacheIndex.YT_QUEUE] = new Queue();
+		cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
+		cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";	
+		cache[guild.id][cacheIndex.GG] = false;
 	});
 	console.log("Connected as: " + client.User.username);
 });
 
+client.Dispatcher.on("GUILD_CREATE", e => {
+	var guild = e.guild;
+	if(!cache[guild.id]){
+		console.log("Connected to guild " + guild.name + " : " + guild.id);
+		cache[guild.id] = [];
+		cache[guild.id][cacheIndex.YT_QUEUE] = new Queue();
+		cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
+		cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";	
+		cache[guild.id][cacheIndex.GG] = false;
+	}
+});
+
+client.Dispatcher.on("GUILD_DELETE", e => {
+	// console.log(e.data);
+	console.log("Removed from guild " + e.data.name + " : " + e.guildId);
+	cache[e.guildId] = undefined;
+});
+
 client.Dispatcher.on("MESSAGE_CREATE", e => {
+	// Previnir que o bot processe as próprias mensagens.
+	if (e.message.author.id === client.User.id) return;
+
 	var author = e.message.author;
 	var guild = e.message.guild;
+	var cmd = e.message.content.trim();
 
-	if(e.message.content == "$help"){
+	if(cmd == "$help"){
 		e.message.reply("Comandos para o Migu Bot!\n"+
 			"$ping - Verifica se eu estou recebendo comandos.  :)\n"+
 			"$gg - GG!\n"+
@@ -45,11 +76,11 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 			"$stop - Para de tocar tudo.");
 	}
 
-	else if (e.message.content == "$ping"){
+	else if (cmd == "$ping"){
 		e.message.reply("pong");
 	}
 
-	else if(e.message.content == "$gg"){
+	else if(cmd == "$gg"){
 		var vChannel = author.getVoiceChannel(e.message.guild);
 		if(vChannel){
 			if(checkIfInVoiceChannel(vChannel,guild)){
@@ -58,35 +89,35 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 				}
 				else{
 					vChannel.leave();
-					cache[guild.id][GG] = true;
+					cache[guild.id][cacheIndex.GG] = true;
 					vChannel.join();
 				}
 			}
 			else{
-				cache[guild.id][GG] = true;
+				cache[guild.id][cacheIndex.GG] = true;
 				vChannel.join();	
 			}
 		}
 
 	}
 
-	else if(e.message.content.substring(0,4) == "$ytq"){
-		var arg = e.message.content.replace("$ytq","").trim();
+	else if(cmd.split(" ")[0] == "$ytq"){
+		var arg = cmd.replace("$ytq","").trim();
 		if(arg == ""){
-			if(!cache[guild.id][YT_ISPLAYING] || cache[guild.id][YT_CURRENTVIDEO] == ""){
+			if(!cache[guild.id][cacheIndex.YT_ISPLAYING] || cache[guild.id][cacheIndex.YT_CURRENTVIDEO] == ""){
 				e.message.reply("Não estou tocando nada no momento.  ;)");
 			}
 			else{
-				e.message.reply("Música atual: " + cache[guild.id][YT_CURRENTVIDEO]);	
+				e.message.reply("Música atual: " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO]);	
 			}
 		}
 		else if(arg == "list"){
-			if(!cache[guild.id][YT_ISPLAYING] || cache[guild.id][YT_CURRENTVIDEO] == ""){
+			if(!cache[guild.id][cacheIndex.YT_ISPLAYING] || cache[guild.id][cacheIndex.YT_CURRENTVIDEO] == ""){
 				e.message.reply("Não estou tocando nada no momento.  ;)");
 			}
 			else{
-				var str = "Música atual: " + cache[guild.id][YT_CURRENTVIDEO] +"\nMúsicas na fila:\n";
-				var q = cache[guild.id][YT_QUEUE].getEntireQueue();
+				var str = "Música atual: " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO] +"\nMúsicas na fila:\n";
+				var q = cache[guild.id][cacheIndex.YT_QUEUE].getEntireQueue();
 				for(var i = 0; i < q.length; i++){
 					var pos = "" + (i+1);
 					pos = ("00".substring(0, 2 - pos.length)) + pos;
@@ -100,22 +131,22 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 			if(index){
 				index -= 1;
 				console.log("Tentando remover "+index)
-				if(cache[guild.id][YT_QUEUE].isEmpty()){
+				if(cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
 					e.message.reply("Não tenho nenhuma música na playlist.  :(");
 					return;
 				}
-				else if(index < 0 || index >= cache[guild.id][YT_QUEUE].getLength()){
+				else if(index < 0 || index >= cache[guild.id][cacheIndex.YT_QUEUE].getLength()){
 					e.message.reply("Item não existe!");
 					return;
 				}
-				cache[guild.id][YT_QUEUE].removePosition(index);
+				cache[guild.id][cacheIndex.YT_QUEUE].removePosition(index);
 			}
 		}
 		else if(arg == "next"){
 			var vChannel = author.getVoiceChannel(e.message.guild);
-			if(checkIfInVoiceChannel(vChannel,guild) && cache[guild.id][YT_ISPLAYING] && !cache[guild.id][YT_QUEUE].isEmpty()){
+			if(checkIfInVoiceChannel(vChannel,guild) && cache[guild.id][cacheIndex.YT_ISPLAYING] && !cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
 				if(!vChannel.getVoiceConnectionInfo())	return console.log("Deu ruim com o Voice Info.");
-				playRemote(cache[guild.id][YT_QUEUE].dequeue(), guild.id, vChannel.getVoiceConnectionInfo().voiceConnection);
+				playRemote(cache[guild.id][cacheIndex.YT_QUEUE].dequeue(), guild, vChannel.getVoiceConnectionInfo().voiceConnection);
 				return;
 			}
 			else{
@@ -126,24 +157,24 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 		else{
 			var vChannel = author.getVoiceChannel(e.message.guild);
 			if(vChannel){
-				if(!cache[guild.id][YT_QUEUE].isEmpty() || cache[guild.id][YT_ISPLAYING]){
-					cache[guild.id][YT_QUEUE].enqueue(arg);
+				if(!cache[guild.id][cacheIndex.YT_QUEUE].isEmpty() || cache[guild.id][cacheIndex.YT_ISPLAYING]){
+					cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
 				}
 				else{
 					if(checkIfInVoiceChannel(vChannel,guild)){
 						if(vChannel.getVoiceConnectionInfo()){
-							playRemote(arg, guild.id, vChannel.getVoiceConnectionInfo().voiceConnection);	
+							playRemote(arg, guild, vChannel.getVoiceConnectionInfo().voiceConnection);	
 						}
 						else{
 							vChannel.leave();
-							cache[guild.id][YT_CMD] = true;
-							cache[guild.id][YT_QUEUE].enqueue(arg);
+							cache[guild.id][cacheIndex.YT_CMD] = true;
+							cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
 							vChannel.join();
 						}
 					}
 					else{
-						cache[guild.id][YT_CMD] = true;
-						cache[guild.id][YT_QUEUE].enqueue(arg);
+						cache[guild.id][cacheIndex.YT_CMD] = true;
+						cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
 						vChannel.join();	
 					}
 				}
@@ -152,77 +183,72 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 
 	}
 
-	else if(e.message.content.substring(0,3) == "$yt"){
-		var arg = e.message.content.replace("$yt","").trim();
+	else if(cmd.split(" ")[0] == "$yt"){
+		var arg = cmd.replace("$yt","").trim();
 		if(arg == ""){
-			if(!cache[guild.id][YT_ISPLAYING] || cache[guild.id][YT_CURRENTVIDEO] == ""){
+			if(!cache[guild.id][cacheIndex.YT_ISPLAYING] || cache[guild.id][cacheIndex.YT_CURRENTVIDEO] == ""){
 				e.message.reply("Não estou tocando nada no momento.  ;)");
 			}
 			else{
-				e.message.reply("Música atual: " + cache[guild.id][YT_CURRENTVIDEO]);	
+				e.message.reply("Música atual: " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO]);	
 			}
 		}
 		else{
 			var vChannel = author.getVoiceChannel(guild);
 			if(vChannel){
-				if(!cache[guild.id][YT_QUEUE].isEmpty()){
-					cache[guild.id][YT_QUEUE].clearQueue();
+				if(!cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
+					cache[guild.id][cacheIndex.YT_QUEUE].clearQueue();
 				}
 				if(checkIfInVoiceChannel(vChannel,guild)){
 					if(vChannel.getVoiceConnectionInfo()){
-						playRemote(arg, guild.id, vChannel.getVoiceConnectionInfo().voiceConnection);	
+						playRemote(arg, guild, vChannel.getVoiceConnectionInfo().voiceConnection);	
 					}
 					else{
 						vChannel.leave();
-						cache[guild.id][YT_CMD] = true;
-						cache[guild.id][YT_QUEUE].enqueue(arg);
+						cache[guild.id][cacheIndex.YT_CMD] = true;
+						cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
 						vChannel.join();
 					}
 				}
 				else{
-					cache[guild.id][YT_CMD] = true;
-					cache[guild.id][YT_QUEUE].enqueue(arg);
+					cache[guild.id][cacheIndex.YT_CMD] = true;
+					cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
 					vChannel.join();
 				}
 			}
 		}
 	}
 
-	else if(e.message.content == "$stop"){
+	else if(cmd == "$stop"){
 	    client.Channels.voiceForGuild(guild)
 		    .filter(channel => channel.joined)
 		    .forEach(channel => channel.leave());
+    	console.log("[playRemote] End playing on guild: " + guild.name);
 	}
 
-	else if(vars['admin'] == author.id){
-		if(e.message.content == "$shutdown"){
-			client.disconnect();
-		}
-	}
-
-	else if(e.message.content.charAt(0) == "$"){
+	else if(cmd.charAt(0) == "$"){
 		e.message.reply("Comando inválido.\nUse '$help' para ver os comandos disponível.  :)");
 	}
 });
 
 client.Dispatcher.on("VOICE_CONNECTED", e => {
 	var guild = e.voiceConnection.guild;
-	if(cache[guild.id][GG]){
+	if(cache[guild.id][cacheIndex.GG]){
 		playFile("./sfx/GG sound effect.mp3", guild.id, e.voiceConnection);
-		cache[guild.id][GG] = false;
+		cache[guild.id][cacheIndex.GG] = false;
 	}
-	if(cache[guild.id][YT_CMD]){
-		playRemote(cache[guild.id][YT_QUEUE].dequeue(), guild.id, e.voiceConnection);
-		cache[guild.id][YT_CMD] = false;
+	if(cache[guild.id][cacheIndex.YT_CMD]){
+		playRemote(cache[guild.id][cacheIndex.YT_QUEUE].dequeue(), guild, e.voiceConnection);
+		cache[guild.id][cacheIndex.YT_CMD] = false;
 	}
 });
 
 client.Dispatcher.on("VOICE_DISCONNECTED", e => {
 	var guildId = e.voiceConnection.guildId;
 
-	cache[guildId][YT_ISPLAYING] = false;
-	cache[guildId][YT_CURRENTVIDEO] = "";
-	cache[guildId][YT_QUEUE].clearQueue();
+	cache[guildId][cacheIndex.YT_ISPLAYING] = false;
+	cache[guildId][cacheIndex.YT_CURRENTVIDEO] = "";
+	cache[guildId][cacheIndex.YT_QUEUE].clearQueue();
 });
 
 client.Dispatcher.on("DISCONNECTED", e=> {
@@ -239,12 +265,21 @@ function checkIfInVoiceChannel(vChannel, guild){
 	return (currentConnected && currentConnected.id == vChannel.id);
 }
 
-function playRemote(remote, guildId, info, callback = function(){}) {
+function checkBotVoiceChannelCondition(user, guild){
+	var botVC = client.User.getVoiceChannel(guild);
+	var userVC = user.getVoiceChannel(guild);
+	if(!botVC)	return vChannelCheckCode.BOT_NOT_CONNECTED;
+	if(!userVC)	return vChannelCheckCode.USER_NOT_CONNECTED;
+	if(botVC.id != userVC.id)	return vChannelCheckCode.DIFFERENT_VCHANNEL;
+	return vChannelCheckCode.OK;
+}
+
+function playRemote(remote, guild, info, callback = function(){}) {
   function onMediaInfo(err, mediaInfo) {
     if (err) return console.log("ytdl error:", err);
     // sort by bitrate, high to low; prefer webm over anything else
     var formats = mediaInfo.formats.filter(f => f.container === "webm")
-    .sort((a, b) => b.audioBitrate - a.audioBitrate);
+    	.sort((a, b) => b.audioBitrate - a.audioBitrate);
 
     // get first audio-only format or fallback to non-dash video
     var bestaudio = formats.find(f => f.audioBitrate > 0 && !f.bitrate) ||
@@ -257,27 +292,29 @@ function playRemote(remote, guildId, info, callback = function(){}) {
     	type: "ffmpeg", source: bestaudio.url
     });
 	encoder.once("end", () => {
-		if(cache[guildId][YT_QUEUE].isEmpty()){
-			cache[guildId][YT_ISPLAYING] = false;
-			cache[guildId][YT_CURRENTVIDEO] = "";
-			info.disconnect();
+		if(cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
+			cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
+			cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";
+    		console.log("[playRemote] End playing on guild: " + guild.name);
+			client.user.getVoiceChannel(guild).leave();
 		}else{
-			playRemote(cache[guildId][YT_QUEUE].dequeue(), info);
+			playRemote(cache[guild.id][cacheIndex.YT_QUEUE].dequeue(), info);
 		}
 		callback();
 	});
     encoder.play();
-	cache[guildId][YT_CURRENTVIDEO] = remote;
-    cache[guildId][YT_ISPLAYING] = true;
+    console.log("[playRemote] Started playing "+remote+" on guild: " + guild.name);
+	cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = remote;
+    cache[guild.id][cacheIndex.YT_ISPLAYING] = true;
   }
   try {
     ytdl.getInfo(remote, onMediaInfo);
   } catch (e) { console.log("ytdl threw:", e); }
 }
 
-function playFile(name, guildId, info, callback = function(){}){
-	cache[guildId][YT_ISPLAYING] = false;
-	cache[guildId][YT_CURRENTVIDEO] = "";
+function playFile(name, guild, info, callback = function(){}){
+	cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
+	cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";
 	if (!info) return console.log("[playFile] VoiceConnection não informado");
 
 	var encoder = info.createExternalEncoder({
@@ -310,8 +347,8 @@ function playFile(name, guildId, info, callback = function(){}){
 	if (!encoder) return console.log("Voice connection is disposed");
 
 	encoder.once("end", () => {
-	cache[guildId][GG] = false;
-		info.disconnect();
+	cache[guild.id][cacheIndex.GG] = false;
+		client.user.getVoiceChannel(guild).leave();
 		callback();
 	});
 
@@ -330,8 +367,58 @@ function isAdmin(user, guild){
 	return true;
 }
 
+// NODE.JS EVENTS
 
+// var stdin = process.openStdin();
+const rl = readline.createInterface({
+	input: process.stdin,
+	output: process.stdout,
+	terminal: false
+});
+rl.on('line', function(line){
+	var cmd = line.trim();
+	if(cmd === "status"){
+		client.Guilds.forEach(function(guild){
+			console.log(guild.name + ": "+(cache[guild.id][cacheIndex.YT_ISPLAYING] ? "Tocando música" : "Inativo"));
+		});
+	}
+	else if(cmd === "list"){
+		client.Guilds.forEach(function(guild){
+			console.log(guild.name + " : " + guild.id);
+		});
+	}
+	else if(cmd.split(" ")[0] == "stop"){
+		var arg = cmd.split(" ")[1];
+		if(arg == "all"){
+			client.Guilds.forEach(function(guild){
+				client.Channels.voiceForGuild(guild)
+			    .filter(channel => channel.joined)
+			    .forEach(channel => channel.leave());
 
+				cache[guild.id] = [];
+				cache[guild.id][cacheIndex.YT_QUEUE] = new Queue();
+				cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
+				cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";	
+				cache[guild.id][cacheIndex.GG] = false;
+			});	
+		}
+		else if(cache[arg]){
+			var guild = client.Guilds.filter(guild => guild.id == arg)[0];
+			if(guild){
+				client.Channels.voiceForGuild(guild)
+				    .filter(channel => channel.joined)
+				    .forEach(channel => channel.leave());
+			}
+		}
+	}
+	else if(cmd === "shutdown"){
+		client.disconnect();
+		rl.close();
+	}
+	console.log("\n");
+});
+
+// UTILS
 
 /*
 Queue.js
