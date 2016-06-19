@@ -60,8 +60,14 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 	if (e.message.author.id === client.User.id) return;
 
 	var author = e.message.author;
+	var vChannel = author.getVoiceChannel(e.message.guild);
 	var guild = e.message.guild;
 	var cmd = e.message.content.trim();
+
+	if(cmd.indexOf("(╯°□°）╯︵ ┻━┻") > -1) {
+		var tChannel = e.message.channel;
+		tChannel.sendMessage("┬─┬﻿ ノ( ゜-゜ノ)");
+	}
 
 	if(cmd == "$help"){
 		e.message.reply("Comandos para o Migu Bot!\n"+
@@ -81,7 +87,6 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 	}
 
 	else if(cmd == "$gg"){
-		var vChannel = author.getVoiceChannel(e.message.guild);
 		if(vChannel){
 			if(checkIfInVoiceChannel(vChannel,guild)){
 				if(vChannel.getVoiceConnectionInfo()){
@@ -108,43 +113,48 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 				e.message.reply("Não estou tocando nada no momento.  ;)");
 			}
 			else{
-				e.message.reply("Música atual: " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO]);	
+				e.message.reply("Música atual: " + 
+					cache[guild.id][cacheIndex.YT_CURRENTVIDEO] + 
+					(vChannel.joined ? "." : ". Tocando no canal " + client.User.getVoiceChannel(guild).name));	
 			}
 		}
 		else if(arg == "list"){
-			if(!cache[guild.id][cacheIndex.YT_ISPLAYING] || cache[guild.id][cacheIndex.YT_CURRENTVIDEO] == ""){
-				e.message.reply("Não estou tocando nada no momento.  ;)");
-			}
-			else{
-				var str = "Música atual: " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO] +"\nMúsicas na fila:\n";
-				var q = cache[guild.id][cacheIndex.YT_QUEUE].getEntireQueue();
-				for(var i = 0; i < q.length; i++){
-					var pos = "" + (i+1);
-					pos = ("00".substring(0, 2 - pos.length)) + pos;
-					str += pos + ": " + q[i] + "\n";
+			if(vChannel.joined){
+				if(!cache[guild.id][cacheIndex.YT_ISPLAYING] || cache[guild.id][cacheIndex.YT_CURRENTVIDEO] == ""){
+					e.message.reply("Não estou tocando nada no momento.  ;)");
 				}
-				e.message.reply(str);
+				else{
+					var str = "Música atual: " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO] +"\nMúsicas na fila:\n";
+					var q = cache[guild.id][cacheIndex.YT_QUEUE].getEntireQueue();
+					for(var i = 0; i < q.length; i++){
+						var pos = "" + (i+1);
+						pos = ("00".substring(0, 2 - pos.length)) + pos;
+						str += pos + ": " + q[i] + ";\n";
+					}
+					e.message.reply(str);
+				}
 			}
 		}
 		else if(arg.indexOf("remove ") > -1){
-			var index = parseInt(arg.replace("remove ",""), 10);
-			if(index){
-				index -= 1;
-				console.log("Tentando remover "+index)
-				if(cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
-					e.message.reply("Não tenho nenhuma música na playlist.  :(");
-					return;
+			if(vChannel.joined){
+				var index = parseInt(arg.replace("remove ",""), 10);
+				if(index){
+					index -= 1;
+					console.log("Tentando remover "+index)
+					if(cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
+						e.message.reply("Não tenho nenhuma música na playlist.  :(");
+						return;
+					}
+					else if(index < 0 || index >= cache[guild.id][cacheIndex.YT_QUEUE].getLength()){
+						e.message.reply("Item não existe!");
+						return;
+					}
+					cache[guild.id][cacheIndex.YT_QUEUE].removePosition(index);
 				}
-				else if(index < 0 || index >= cache[guild.id][cacheIndex.YT_QUEUE].getLength()){
-					e.message.reply("Item não existe!");
-					return;
-				}
-				cache[guild.id][cacheIndex.YT_QUEUE].removePosition(index);
 			}
 		}
 		else if(arg == "next"){
-			var vChannel = author.getVoiceChannel(e.message.guild);
-			if(checkIfInVoiceChannel(vChannel,guild) && cache[guild.id][cacheIndex.YT_ISPLAYING] && !cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
+			if(vChannel.joined && cache[guild.id][cacheIndex.YT_ISPLAYING] && !cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
 				if(!vChannel.getVoiceConnectionInfo())	return console.log("Deu ruim com o Voice Info.");
 				playRemote(cache[guild.id][cacheIndex.YT_QUEUE].dequeue(), guild, vChannel.getVoiceConnectionInfo().voiceConnection);
 				return;
@@ -155,27 +165,27 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 
 		}
 		else{
-			var vChannel = author.getVoiceChannel(e.message.guild);
 			if(vChannel){
 				if(!cache[guild.id][cacheIndex.YT_QUEUE].isEmpty() || cache[guild.id][cacheIndex.YT_ISPLAYING]){
 					cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
 				}
 				else{
-					if(checkIfInVoiceChannel(vChannel,guild)){
-						if(vChannel.getVoiceConnectionInfo()){
-							playRemote(arg, guild, vChannel.getVoiceConnectionInfo().voiceConnection);	
+					if(checkRequiredPermission(vChannel)){
+						if(vChannel.joined){
+							if(vChannel.getVoiceConnectionInfo()){
+								playRemote(arg, guild, vChannel.getVoiceConnectionInfo().voiceConnection);	
+								return;
+							}
+							else{
+								vChannel.leave();
+							}
 						}
-						else{
-							vChannel.leave();
-							cache[guild.id][cacheIndex.YT_CMD] = true;
-							cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
-							vChannel.join();
-						}
-					}
-					else{
 						cache[guild.id][cacheIndex.YT_CMD] = true;
 						cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
-						vChannel.join();	
+						vChannel.join();
+					}
+					else{
+						e.message.reply("Não tenho permissão para operar no canal que você está conectado.  :(");
 					}
 				}
 			}
@@ -190,30 +200,31 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 				e.message.reply("Não estou tocando nada no momento.  ;)");
 			}
 			else{
-				e.message.reply("Música atual: " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO]);	
+				e.message.reply("Música atual: " + 
+					cache[guild.id][cacheIndex.YT_CURRENTVIDEO] + 
+					(vChannel.joined ? "." : ". Tocando no canal " + client.User.getVoiceChannel(guild).name));		
 			}
 		}
 		else{
-			var vChannel = author.getVoiceChannel(guild);
 			if(vChannel){
-				if(!cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
+				if(checkRequiredPermission(vChannel)){
 					cache[guild.id][cacheIndex.YT_QUEUE].clearQueue();
-				}
-				if(checkIfInVoiceChannel(vChannel,guild)){
-					if(vChannel.getVoiceConnectionInfo()){
-						playRemote(arg, guild, vChannel.getVoiceConnectionInfo().voiceConnection);	
+					if(vChannel.joined){
+						if(vChannel.getVoiceConnectionInfo()){
+							playRemote(arg, guild, vChannel.getVoiceConnectionInfo().voiceConnection);
+							return;
+						}
+						else{
+							vChannel.leave();
+						}
 					}
-					else{
-						vChannel.leave();
-						cache[guild.id][cacheIndex.YT_CMD] = true;
-						cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
-						vChannel.join();
-					}
-				}
-				else{
 					cache[guild.id][cacheIndex.YT_CMD] = true;
 					cache[guild.id][cacheIndex.YT_QUEUE].enqueue(arg);
 					vChannel.join();
+					return;
+				}
+				else{
+					e.message.reply("Não tenho permissão para operar no canal que você está conectado.  :(");
 				}
 			}
 		}
@@ -245,10 +256,7 @@ client.Dispatcher.on("VOICE_CONNECTED", e => {
 
 client.Dispatcher.on("VOICE_DISCONNECTED", e => {
 	var guildId = e.voiceConnection.guildId;
-
-	cache[guildId][cacheIndex.YT_ISPLAYING] = false;
-	cache[guildId][cacheIndex.YT_CURRENTVIDEO] = "";
-	cache[guildId][cacheIndex.YT_QUEUE].clearQueue();
+	clearVoiceCache(guildId);
 });
 
 client.Dispatcher.on("DISCONNECTED", e=> {
@@ -260,9 +268,20 @@ client.Dispatcher.on("DISCONNECTED", e=> {
 	}
 });
 
-function checkIfInVoiceChannel(vChannel, guild){
-	var currentConnected = client.User.getVoiceChannel(guild);
-	return (currentConnected && currentConnected.id == vChannel.id);
+function checkRequiredPermission(vChannel){
+	var permissions = client.User.permissionsFor(vChannel);
+	return (permissions.Voice.CONNECT && permissions.Voice.SPEAK);
+}
+
+// function checkIfInVoiceChannel(vChannel, guild){
+// 	var currentConnected = client.User.getVoiceChannel(guild);
+// 	return (currentConnected && currentConnected.id == vChannel.id);
+// }
+
+function clearVoiceCache(guildId){
+	cache[guildId][cacheIndex.YT_ISPLAYING] = false;
+	cache[guildId][cacheIndex.YT_CURRENTVIDEO] = "";
+	cache[guildId][cacheIndex.YT_QUEUE].clearQueue();
 }
 
 function checkBotVoiceChannelCondition(user, guild){
@@ -289,16 +308,24 @@ function playRemote(remote, guild, info, callback = function(){}) {
     if (!info) return console.log("[playRemote] VoiceConnection não informado");
     // note that in this case FFmpeg must also be compiled with HTTPS support
     var encoder = info.createExternalEncoder({
-    	type: "ffmpeg", source: bestaudio.url
+    	type: "ffmpeg", 
+    	source: bestaudio.url, 
+    	format: "opus", 
+    	frameDuration: 60, 
+    	nputArgs: [], 
+    	outputArgs: ["-af", "volume=0.3"], 
+    	debug: false
     });
 	encoder.once("end", () => {
 		if(cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
 			cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
 			cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";
     		console.log("[playRemote] End playing on guild: " + guild.name);
-			client.user.getVoiceChannel(guild).leave();
+			// client.user.getVoiceChannel(guild).leave();
+			// var vconn = client.VoiceConnections.filter(vc => vc.voiceConnection.guild.id == guild.id);
+			// vconn.voiceConnection.disconnect();	
 		}else{
-			playRemote(cache[guild.id][cacheIndex.YT_QUEUE].dequeue(), info);
+			playRemote(cache[guild.id][cacheIndex.YT_QUEUE].dequeue(), guild, info);
 		}
 		callback();
 	});
@@ -316,7 +343,7 @@ function playFile(name, guild, info, callback = function(){}){
 	cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
 	cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";
 	if (!info) return console.log("[playFile] VoiceConnection não informado");
-
+	
 	var encoder = info.createExternalEncoder({
 		type: "ffmpeg",
 
@@ -379,7 +406,7 @@ rl.on('line', function(line){
 	var cmd = line.trim();
 	if(cmd === "status"){
 		client.Guilds.forEach(function(guild){
-			console.log(guild.name + ": "+(cache[guild.id][cacheIndex.YT_ISPLAYING] ? "Tocando música" : "Inativo"));
+			console.log(guild.name + ": "+(cache[guild.id][cacheIndex.YT_ISPLAYING] ? "Playing " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO] : "Inativo"));
 		});
 	}
 	else if(cmd === "list"){
@@ -392,8 +419,8 @@ rl.on('line', function(line){
 		if(arg == "all"){
 			client.Guilds.forEach(function(guild){
 				client.Channels.voiceForGuild(guild)
-			    .filter(channel => channel.joined)
-			    .forEach(channel => channel.leave());
+				    .filter(channel => channel.joined)
+				    .forEach(channel => channel.leave());
 
 				cache[guild.id] = [];
 				cache[guild.id][cacheIndex.YT_QUEUE] = new Queue();
