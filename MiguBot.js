@@ -2,6 +2,7 @@ var Discordie = require("discordie");
 var ytdl = require("ytdl-core");
 var readline = require('readline');
 // var youtube = require("./youtube.js");
+var MCServer = require("./MCServerControl.js");
 var vars = require('./auth.json');
 var client = new Discordie({autoReconnect: true});
 var cache = [];
@@ -26,32 +27,38 @@ const vChannelCheckCode = {
 
 // Discordie events
 client.Dispatcher.on("GATEWAY_READY", e => {
+	var op = ""
 	client.Guilds.forEach(function(guild){
-		console.log(guild.name + " : " + guild.id);
+		// console.log(guild.name + " : " + guild.id);
+		op += guild.name + " : " + guild.id + "\n";
 		cache[guild.id] = [];
 		cache[guild.id][cacheIndex.YT_QUEUE] = new Queue();
 		cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
 		cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";	
 		cache[guild.id][cacheIndex.GG] = false;
 	});
-	console.log("Connected as: " + client.User.username);
+	client.User.setGame(vars['state']);
+	op += "Connected as: " + client.User.username + "\n";
+	log(op);
 });
 
 client.Dispatcher.on("GUILD_CREATE", e => {
 	var guild = e.guild;
+	var op = ""
 	if(!cache[guild.id]){
-		console.log("Connected to guild " + guild.name + " : " + guild.id);
+		op += "Connected to guild " + guild.name + " : " + guild.id + "\n";
 		cache[guild.id] = [];
 		cache[guild.id][cacheIndex.YT_QUEUE] = new Queue();
 		cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
 		cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";	
 		cache[guild.id][cacheIndex.GG] = false;
 	}
+	log(op);
 });
 
 client.Dispatcher.on("GUILD_DELETE", e => {
 	// console.log(e.data);
-	console.log("Removed from guild " + e.data.name + " : " + e.guildId);
+	log("Removed from guild " + e.data.name + " : " + e.guildId);
 	cache[e.guildId] = undefined;
 });
 
@@ -70,7 +77,7 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 	}
 
 	if(cmd == "$help"){
-		e.message.reply("Comandos para o Migu Bot!\n"+
+		var replyMsg = "Comandos para o Migu Bot!\n"+
 			"$ping - Verifica se eu estou recebendo comandos.  :)\n"+
 			"$gg - GG!\n"+
 			"$yt [link] - toca o áudio de um link do youtube, interropendo qualquer execução.\n"+
@@ -79,7 +86,13 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 			"$ytq list - Mostra o que está tocando, e as músicas enfilerada.\n"+
 			"$ytq next - Pula para a próxima música da lista.\n"+
 			"$ytq remove [index] - Remove a música do indice informado.\n"+
-			"$stop - Para de tocar tudo.");
+			"$stop - Para de tocar tudo."
+
+		if(vars["mineControl"].filter(id => id == author.id).length > 0){
+			replyMsg += "\n$mine [start | stop | restart | status] - Comandos para o servidor de Minecraft."
+		}
+
+		e.message.reply(replyMsg);
 	}
 
 	else if (cmd == "$ping"){
@@ -140,7 +153,7 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 				var index = parseInt(arg.replace("remove ",""), 10);
 				if(index){
 					index -= 1;
-					console.log("Tentando remover "+index)
+					// console.log("Tentando remover "+index)
 					if(cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
 						e.message.reply("Não tenho nenhuma música na playlist.  :(");
 						return;
@@ -155,7 +168,7 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 		}
 		else if(arg == "next"){
 			if(vChannel.joined && cache[guild.id][cacheIndex.YT_ISPLAYING] && !cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
-				if(!vChannel.getVoiceConnectionInfo())	return console.log("Deu ruim com o Voice Info.");
+				if(!vChannel.getVoiceConnectionInfo())	return log("Deu ruim com o Voice Info.");
 				playRemote(cache[guild.id][cacheIndex.YT_QUEUE].dequeue(), guild, vChannel.getVoiceConnectionInfo().voiceConnection);
 				return;
 			}
@@ -234,12 +247,44 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 	    client.Channels.voiceForGuild(guild)
 		    .filter(channel => channel.joined)
 		    .forEach(channel => channel.leave());
-    	console.log("[playRemote] End playing on guild: " + guild.name);
+    	log("[playRemote] End playing on guild: " + guild.name);
+	}
+
+	else if(vars["mineControl"].filter(id => id == author.id).length > 0){
+		if(cmd.split(" ")[0] == "$mine"){
+			var tChannel = e.message.channel;
+			var arg = cmd.split(" ")[1];
+			if(arg == "start"){
+				if(!MCServer.isOnline()){
+					tChannel.sendMessage("Iniciando o servidor dos brothers! (ip: vkawai.no-ip.org).");
+					MCServer.startServer(function(){tChannel.sendMessage("Servidor iniciado com sucesso.")});
+				}
+				else{
+					tChannel.sendMessage("Servidor já está online!");
+				}
+			}
+			else if(arg == "stop"){
+				if(MCServer.isOnline()){
+					MCServer.stopServer(function(){tChannel.sendMessage("Servidor Fechado.")});
+				}
+				else{
+					tChannel.sendMessage("Servidor já está offline!");
+				}
+			}
+			else if(arg == "restart"){
+				tChannel.sendMessage("Reiniciando o servidor.");
+				MCServer.restartserver(function(){tChannel.sendMessage("Servidor reiniciado com sucesso.")});
+			}
+			else if(arg == "status"){
+				tChannel.sendMessage("Status do servidor: " + (MCServer.isOnline() ? "ONLINE" : "OFFLINE"));
+			}
+		}
 	}
 
 	else if(cmd.charAt(0) == "$"){
 		e.message.reply("Comando inválido.\nUse '$help' para ver os comandos disponível.  :)");
 	}
+	// log(vars["mineControl"].indexOf(author.id));
 });
 
 client.Dispatcher.on("VOICE_CONNECTED", e => {
@@ -260,7 +305,7 @@ client.Dispatcher.on("VOICE_DISCONNECTED", e => {
 });
 
 client.Dispatcher.on("DISCONNECTED", e=> {
-	console.log("Client desconectado: "+e.error+"\n");
+	log("Client desconectado: "+e.error+"\n");
 	if(e.autoReconnect){
 		setTimeout(function(){
 			client.connect({ token: vars['discordToken'] });
@@ -294,55 +339,59 @@ function checkBotVoiceChannelCondition(user, guild){
 }
 
 function playRemote(remote, guild, info, callback = function(){}) {
-  function onMediaInfo(err, mediaInfo) {
-    if (err) return console.log("ytdl error:", err);
-    // sort by bitrate, high to low; prefer webm over anything else
-    var formats = mediaInfo.formats.filter(f => f.container === "webm")
-    	.sort((a, b) => b.audioBitrate - a.audioBitrate);
+	function onMediaInfo(err, mediaInfo) {
+	    if (err) return log("ytdl error:", err);
+	    // sort by bitrate, high to low; prefer webm over anything else
+	    var formats = mediaInfo.formats.filter(f => f.container === "webm")
+	    	.sort((a, b) => b.audioBitrate - a.audioBitrate);
 
-    // get first audio-only format or fallback to non-dash video
-    var bestaudio = formats.find(f => f.audioBitrate > 0 && !f.bitrate) ||
-                    formats.find(f => f.audioBitrate > 0);
-    if (!bestaudio) return console.log("[playRemote] No valid formats");
+	    // get first audio-only format or fallback to non-dash video
+	    var bestaudio = formats.find(f => f.audioBitrate > 0 && !f.bitrate) ||
+	                    formats.find(f => f.audioBitrate > 0);
 
-    if (!info) return console.log("[playRemote] VoiceConnection não informado");
-    // note that in this case FFmpeg must also be compiled with HTTPS support
-    var encoder = info.createExternalEncoder({
-    	type: "ffmpeg", 
-    	source: bestaudio.url, 
-    	format: "opus", 
-    	frameDuration: 60, 
-    	nputArgs: [], 
-    	outputArgs: ["-af", "volume=0.3"], 
-    	debug: false
-    });
-	encoder.once("end", () => {
-		if(cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
-			cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
-			cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";
-    		console.log("[playRemote] End playing on guild: " + guild.name);
-			// client.user.getVoiceChannel(guild).leave();
-			// var vconn = client.VoiceConnections.filter(vc => vc.voiceConnection.guild.id == guild.id);
-			// vconn.voiceConnection.disconnect();	
-		}else{
-			playRemote(cache[guild.id][cacheIndex.YT_QUEUE].dequeue(), guild, info);
-		}
-		callback();
-	});
-    encoder.play();
-    console.log("[playRemote] Started playing "+remote+" on guild: " + guild.name);
-	cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = remote;
-    cache[guild.id][cacheIndex.YT_ISPLAYING] = true;
-  }
-  try {
-    ytdl.getInfo(remote, onMediaInfo);
-  } catch (e) { console.log("ytdl threw:", e); }
+	    if (!bestaudio) return log("[playRemote] No valid formats");
+
+	    if (!info) return log("[playRemote] VoiceConnection não informado");
+	    // note that in this case FFmpeg must also be compiled with HTTPS support
+	    var encoder = info.createExternalEncoder({
+	    	type: "ffmpeg", 
+			format: "opus",
+	    	source: bestaudio.url, 
+	    	outputArgs: ["-af", "volume=0.3"]
+	    });
+
+		encoder.once("end", () => {
+			if(cache[guild.id][cacheIndex.YT_QUEUE].isEmpty()){
+				cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
+				cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";
+	    		log("[playRemote] End playing on guild: " + guild.name);
+				// client.user.getVoiceChannel(guild).leave();
+				// var vconn = client.VoiceConnections.filter(vc => vc.voiceConnection.guild.id == guild.id);
+				// vconn.voiceConnection.disconnect();	
+			}else{
+				playRemote(cache[guild.id][cacheIndex.YT_QUEUE].dequeue(), guild, info);
+			}
+			callback();
+		});
+
+		// encoder.once("unpipe", () =>{
+		// 	log("encoder unpiped");
+		// })
+
+	    encoder.play();
+	    log("[playRemote] Started playing "+remote+" on guild: " + guild.name);
+		cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = remote;
+	    cache[guild.id][cacheIndex.YT_ISPLAYING] = true;
+	}
+	try {
+		ytdl.getInfo(remote, onMediaInfo);
+	} catch (e) { log("ytdl threw:", e); }
 }
 
 function playFile(name, guild, info, callback = function(){}){
 	cache[guild.id][cacheIndex.YT_ISPLAYING] = false;
 	cache[guild.id][cacheIndex.YT_CURRENTVIDEO] = "";
-	if (!info) return console.log("[playFile] VoiceConnection não informado");
+	if (!info) return log("[playFile] VoiceConnection não informado");
 	
 	var encoder = info.createExternalEncoder({
 		type: "ffmpeg",
@@ -371,7 +420,7 @@ function playFile(name, guild, info, callback = function(){}){
 		//                  and starts with "-loglevel warning"
 		debug: false
 	});
-	if (!encoder) return console.log("Voice connection is disposed");
+	if (!encoder) return log("Voice connection is disposed");
 
 	encoder.once("end", () => {
 	cache[guild.id][cacheIndex.GG] = false;
@@ -394,6 +443,14 @@ function isAdmin(user, guild){
 	return true;
 }
 
+function log(data) { // Log (dump) server output to variable
+    //  Technically uneeded, useful for debugging
+    // process.stdout.write(data.toString());
+    console.log("==== Migu Bot Log ====\n");
+    console.log(data);
+    console.log("======================\n");
+}
+
 // NODE.JS EVENTS
 
 // var stdin = process.openStdin();
@@ -402,16 +459,17 @@ const rl = readline.createInterface({
 	output: process.stdout,
 	terminal: false
 });
+
 rl.on('line', function(line){
 	var cmd = line.trim();
 	if(cmd === "status"){
 		client.Guilds.forEach(function(guild){
-			console.log(guild.name + ": "+(cache[guild.id][cacheIndex.YT_ISPLAYING] ? "Playing " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO] : "Inativo"));
+			log(guild.name + ": "+(cache[guild.id][cacheIndex.YT_ISPLAYING] ? "Playing " + cache[guild.id][cacheIndex.YT_CURRENTVIDEO] : "Inativo"));
 		});
 	}
 	else if(cmd === "list"){
 		client.Guilds.forEach(function(guild){
-			console.log(guild.name + " : " + guild.id);
+			log(guild.name + " : " + guild.id);
 		});
 	}
 	else if(cmd.split(" ")[0] == "stop"){
@@ -442,10 +500,43 @@ rl.on('line', function(line){
 		client.disconnect();
 		rl.close();
 	}
-	console.log("\n");
-});
 
-// UTILS
+	else if(cmd === "clear"){
+		console.log('\033[2J');
+	}
+	
+	else if(cmd[0] == '/'){
+		var arg = cmd.substr(1);
+		if(arg == "start"){
+			if(!MCServer.isOnline()){
+				log("Iniciando o servidor dos brothers! (ip: vkawai.no-ip.org).");
+				MCServer.startServer();
+			}
+			else{
+				log("Servidor já está online!");
+			}
+		}
+		else if(arg == "stop"){
+			if(MCServer.isOnline()){
+				MCServer.stopServer();
+			}
+			else{
+				log("Servidor já está offline!");
+			}
+		}
+		else if(arg == "restart"){
+			log("Reiniciando o servidor.");
+			MCServer.restartserver();
+		}
+		else if(arg == "status"){
+			log("Status do servidor: " + (MCServer.isOnline() ? "ONLINE" : "OFFLINE"));
+		}
+		else{
+			MCServer.issueCommand();
+		}
+	}
+	// console.log("\n");
+});
 
 /*
 Queue.js
