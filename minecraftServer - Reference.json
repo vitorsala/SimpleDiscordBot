@@ -1,0 +1,5 @@
+{
+  "path":"PATH",
+  "ram":"XMS/XMX ram amount (ie. 1024M)",
+  "backupFolder":"folder where backups will be saved"
+}
