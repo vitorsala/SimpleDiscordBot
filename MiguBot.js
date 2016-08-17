@@ -256,7 +256,7 @@ client.Dispatcher.on("MESSAGE_CREATE", e => {
 			var arg = cmd.split(" ")[1];
 			if(arg == "start"){
 				if(!MCServer.isOnline()){
-					tChannel.sendMessage("Iniciando o servidor dos brothers! (ip: vkawai.no-ip.org).");
+					tChannel.sendMessage("Iniciando o servidor dos brothers!.");
 					MCServer.startServer(function(){tChannel.sendMessage("Servidor iniciado com sucesso.")});
 				}
 				else{
